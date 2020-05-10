@@ -1,0 +1,117 @@
+---
+title: "R Notebook"
+output: rmarkdown::github_document
+---
+
+```{r, echo = FALSE}
+knitr::opts_chunk$set(
+  fig.path = "README_figs/README-"
+)
+```
+
+
+```{r}
+setwd("D:\\University\\Study Materials\\Spring Semester\\Data Mining 1\\Final Project")
+breastcancer = read.csv('breast-cancer-wisconsin-data.csv')[,1:32]
+```
+
+```{r}
+head(breastcancer)
+pca_data = breastcancer[,-c(1,2)]
+head(pca_data)
+rownames(pca_data) = breastcancer$id
+```
+
+
+```{r}
+pca = prcomp(pca_data,scale= TRUE, center = TRUE) # fitting PCA
+```
+
+Eigen Values
+```{r}
+pca.var = pca$sdev^2
+pca.var.per = round(pca.var/sum(pca.var)*100,1)
+as.data.frame(round(pca.var,2))
+```
+The Eigen values associated with the first 6 PCs are greater than 1.
+
+Scree plot
+```{r}
+pve = pca.var/sum(pca.var)
+
+plot(cumsum(pve), xlab = "Principal Components",
+     ylab = "Total variance explained",
+     main = "Scree Plot",
+     ylim = c(0,1), type = "b")
+
+```
+The first 6 PCs are explaining approximately 90% of the variations.
+
+Scatter plot of observation by PC1 and PC2
+```{r}
+plot(pca$x[,c(1,2)], col = breastcancer$diagnosis, main = "PC 1 vs PC 2")
+```
+We can see a clear separation of diagnosis (M or B) from the above PC1 vs PC2 plot.
+
+```{r}
+head(pca$x,3)
+```
+We can use the first 6 principal components as predictors for fitting other models.
+
+LDA
+```{r}
+pca.lda = pca$x[,1:6] #selecting the first 6 PCs
+
+diagnosis = as.numeric(breastcancer$diagnosis == "M") #conversion to binary
+
+lda.data = cbind(pca.lda, diagnosis) #binding PCs with the response
+head(lda.data)
+```
+
+```{r}
+lda.data.df = as.data.frame(lda.data)
+
+#train test split
+set.seed(7047)
+idx = sample(1:nrow(lda.data.df), nrow(lda.data.df)*0.75)
+
+lda.train = lda.data.df[idx,]
+lda.test = lda.data.df[-idx,]
+
+dim(lda.train)
+dim(lda.test)
+```
+
+
+```{r}
+library(MASS)
+p_cut = sum(breastcancer$diagnosis == "M")/nrow(breastcancer) #selecting P_cut the naive way
+
+lda <- lda(diagnosis~., 
+           data = lda.train) #fitting LDA
+
+prob_train_lda <- predict(lda, data = lda.train) 
+
+table(lda.train$diagnosis, prob_train_lda$posterior[,2] > p_cut, 
+      dnn = c("Observed","Predicted"))
+
+prob_test_lda <- predict(lda, newdata = lda.test)
+
+table(lda.test$diagnosis, prob_test_lda$posterior[,2] > p_cut, 
+      dnn = c("Observed","Predicted"))
+```
+
+```{r}
+6/143 #test misclassification rate
+```
+ROC Curve
+```{r}
+library(ROCR)
+
+pred = prediction(prob_test_lda$posterior[,2], lda.test$diagnosis)
+perf = performance(pred, "tpr", "fpr")
+plot(perf, colorize=TRUE, main = "ROC curve")
+
+unlist(slot(performance(pred, "auc"), "y.values"))
+```
+
